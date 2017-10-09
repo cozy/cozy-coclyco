@@ -144,7 +144,10 @@ class PKI(ACME):
         slug, domain = self.__slug(fqdn)
 
         crt = self.__get_crt(slug, domain)
-        _, old = self._extract_x509_domains(crt)
+        if crt:
+            _, old = self._extract_x509_domains(crt)
+        else:
+            old = set()
 
         new = self.__installed_apps(slug, domain)
         new = set([self.__domain(app, slug, domain) for app in new])

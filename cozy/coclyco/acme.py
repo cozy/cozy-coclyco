@@ -17,7 +17,6 @@ from pyasn1_modules.rfc2459 import SubjectAltName
 
 from .logger import Logger
 
-
 class ACME:
     ACME_STAGING = os.getenv("ACME_STAGING", None)
     if ACME_STAGING:
