@@ -2,7 +2,7 @@
 
 ## Goal
 
-`cozy-coclyco` is design to create Cozy instances, manage nginx vhost and Let's encrypt certificate issuance.
+`cozy-coclyco` is designed to create Cozy instances, manage nginx vhost and Let's encrypt certificate issuance.
 
 A single prime256v1 private key `/etc/ssl/private/cozy.pem` is used to issue certificates.
 For each created instance with domain `<fqdn>`, it create
