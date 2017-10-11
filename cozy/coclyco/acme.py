@@ -126,7 +126,11 @@ class ACME:
         return client
 
     def __get_client(self):
-        account_key = self._file("account.pem")
+        if ACME.ACME_STAGING:
+            account_key = self._file("account-staging.pem")
+        else:
+            account_key = self._file("account.pem")
+
         if not os.path.isfile(account_key):
             Logger.info("Create new account key %s", account_key)
             key = self._generate_rsa_key(format="acme")
