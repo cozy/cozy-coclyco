@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from .acme import ACME
 from .logger import Logger
 from .cmd import Cmd
+from .utils import list_safe_get
 
 from pkg_resources import resource_stream
 
@@ -40,9 +41,8 @@ class PKI(ACME):
         return crt
 
     def __slug(self, fqdn):
-        # Fuck python
         slug, *domain = fqdn.split(".", 1)
-        domain = next(iter(domain), None)
+        domain = list_safe_get(domain, 0)
         return slug, domain
 
     def __fqdn(self, slug, domain):
