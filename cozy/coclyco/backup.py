@@ -1,10 +1,10 @@
+import io
 import json
 import os
 import os.path
 import re
 import shutil
 import tarfile
-import tempfile
 
 import couchdb
 import yaml
@@ -48,26 +48,28 @@ class Backup:
         Logger.info("Delete CouchDB %s", db.name)
         self.__server.delete(db.name)
 
-    def __dump_to_json(self, db, dir, docs):
+    def __dump_to_json(self, tar, db, docs):
         if isinstance(db, str):
             filename = db
         else:
             filename = db.name.split("/")[1]
+
         filename = "%s.json" % filename
-        filename = os.path.join(dir, filename)
-        with open(filename, "w") as file:
-            json.dump(docs, file)
-        return filename
+        filename = os.path.join("couchdb", filename)
 
-    def __dump_db(self, db, dir):
-        Logger.info("Compact CouchDB %s", db.name)
-        db.compact()
+        content = json.dumps(docs)
+        with io.BytesIO() as file:
+            file.write(content.encode())
+            info = tarfile.TarInfo(filename)
+            info.size = file.tell()
+            file.seek(0)
+            tar.addfile(info, file)
 
+    def __dump_db(self, db, tar):
         Logger.info("Dump CouchDB %s", db.name)
 
         docs = list(self.__docs(db))
-        file = self.__dump_to_json(db, dir, docs)
-        return file
+        self.__dump_to_json(tar, db, docs)
 
     def __restore_db(self, fqdn, db, content):
         db = "%s/%s" % (fqdn, db)
@@ -99,27 +101,21 @@ class Backup:
         db, instance = self.__get_global_instance(fqdn)
         if not instance:
             return
-        Logger.info("Delete %s %s/%s", db.name, instance["_id"], instance["_rev"])
+        Logger.info("Delete %s %s/%s", db.name, instance["_id"],
+                    instance["_rev"])
         db.delete(instance)
 
-    def __dump_global_instance(self, dir, fqdn):
+    def __dump_global_instance(self, fqdn, tar):
         _, instance = self.__get_global_instance(fqdn)
         if not instance:
             Logger.exception("global/instances document %s not found", fqdn)
-        file = self.__dump_to_json("global", dir, [instance])
-        return file
+        self.__dump_to_json(tar, "global", [instance])
 
-    def __dump_couchdb(self, dir, fqdn, tar):
-        file = self.__dump_global_instance(dir, fqdn)
-        target = os.path.basename(file)
-        target = os.path.join("couchdb", target)
-        tar.add(file, target)
+    def __dump_couchdb(self, fqdn, tar):
+        self.__dump_global_instance(fqdn, tar)
 
         for db in self.__related_dbs(fqdn):
-            file = self.__dump_db(db, dir)
-            target = os.path.basename(file)
-            target = os.path.join("couchdb", target)
-            tar.add(file, target)
+            self.__dump_db(db, tar)
 
     def __dump_storage(self, fqdn, tar):
         storage = self.__storage(fqdn)
@@ -128,12 +124,10 @@ class Backup:
 
     def __backup(self, fqdn):
         Logger.info("Backup %s", fqdn)
-        with tempfile.TemporaryDirectory() as dir:
-            filename = "%s.tar.xz" % fqdn
-            Logger.info(filename)
-            with tarfile.open(filename, "w|xz") as tar:
-                self.__dump_couchdb(dir, fqdn, tar)
-                self.__dump_storage(fqdn, tar)
+        filename = "%s.tar.xz" % fqdn
+        with tarfile.open(filename, "w|xz") as tar:
+            self.__dump_couchdb(fqdn, tar)
+            self.__dump_storage(fqdn, tar)
 
     def backup(self, fqdns):
         for fqdn in fqdns:
