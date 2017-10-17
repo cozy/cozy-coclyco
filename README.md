@@ -67,3 +67,11 @@ By default, the renewal is triggered each month by `/etc/cron.monthly/cozy-cocly
 You can regenerate the nginx vhost with
 
 	cozy-coclyco vhost <fqdn>
+
+To backup a Cozy
+
+	cozy-coclyco backup <fqdn>*
+
+To restore a Cozy from a backup
+
+	cozy-coclyco restore <fqdn> <archive.tar.xz>
