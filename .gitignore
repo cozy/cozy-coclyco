@@ -1,6 +1,7 @@
 __pycache__/
 *.egg-info/
 .pybuild/
+*.pyc
 /dist/
 /debian/
 /tmp/
