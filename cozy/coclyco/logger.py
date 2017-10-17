@@ -49,7 +49,7 @@ class Logger:
     def exception(*args, **kwargs):
         Logger.__logger.critical(*args, **kwargs)
         message, *args = args
-        raise Exception(message % args)
+        raise Exception(message % tuple(args))
 
     @staticmethod
     def critical(*args, **kwargs):

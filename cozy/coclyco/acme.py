@@ -1,5 +1,4 @@
 import os
-import sys
 from time import sleep
 
 import OpenSSL
@@ -16,6 +15,7 @@ from pyasn1.codec.der import decoder
 from pyasn1_modules.rfc2459 import SubjectAltName
 
 from .logger import Logger
+
 
 class ACME:
     ACME_STAGING = os.getenv("ACME_STAGING", None)

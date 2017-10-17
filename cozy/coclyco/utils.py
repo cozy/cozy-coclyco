@@ -1,3 +1,9 @@
+def list_safe_get(list, index, default=None):
+    try:
+        return list[index]
+    except IndexError:
+        return default
+
 
 def filter_sensible_field(arg):
     result = {}

@@ -82,11 +82,6 @@ class PKI(ACME):
         for line in o.splitlines():
             yield line.split(" ", 1)[0]
 
-    def __existing_instances(self):
-        o, *_ = Cmd.exec("cozy-stack", "instances", "ls")
-        for line in o.splitlines():
-            yield line.split(" ", 1)[0]
-
     def __issue_certificate(self, slug, domain):
         apps = self.__installed_apps(slug, domain)
         csr = self.__create_csr(slug, domain, apps=apps)
@@ -186,11 +181,7 @@ class PKI(ACME):
         csr = self.__get_csr(slug, domain)
         self._issue_certificate(csr)
 
-    def renew(self, args):
-        fqdns = args.fqdn
-        if not fqdns:
-            fqdns = self.__existing_instances()
-
+    def renew(self, fqdns):
         for fqdn in fqdns:
             self.__renew(fqdn)
 
