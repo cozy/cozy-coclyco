@@ -24,7 +24,9 @@ setup(
         'pyasn1-modules',
         'acme',
         'requests',
-        'setuptools'
+        'setuptools',
+        'pyyaml',
+        'couchdb >=1.1'
     ],
     entry_points={
         "console_scripts": [
