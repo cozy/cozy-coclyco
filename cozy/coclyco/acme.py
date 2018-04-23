@@ -4,7 +4,7 @@ from time import sleep
 import OpenSSL
 import acme.challenges
 import acme.client
-import acme.jose
+import josepy
 import acme.messages
 import requests
 from cryptography.hazmat.backends import default_backend
@@ -121,7 +121,7 @@ class ACME:
         return os.path.join(ACME.ACME_DIRECTORY, *path)
 
     def __create_client(self, key):
-        key = acme.jose.JWKRSA(key=key)
+        key = josepy.JWKRSA(key=key)
         client = acme.client.Client(ACME.ACME_ENDPOINT, key)
         return client
 
@@ -265,7 +265,7 @@ class ACME:
 
         Logger.info("Request issuance for %s", domains)
         chain = self.__acme.request_issuance(
-            acme.jose.util.ComparableX509(csr), auth)
+            josepy.util.ComparableX509(csr), auth)
 
         Logger.info("Fetch certificate for %s", domains)
         crt = requests.get(chain.uri)
