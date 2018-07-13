@@ -1,17 +1,23 @@
 import os
 import re
 from datetime import datetime, timedelta
+from pkg_resources import resource_stream
 
 from .acme import ACME
-from .logger import Logger
 from .cmd import Cmd
+from .logger import Logger
 from .utils import list_safe_get
-
-from pkg_resources import resource_stream
 
 
 class PKI(ACME):
-    DEFAULT_APPS = ["onboarding", "settings", "drive", "photos", "collect"]
+    DEFAULT_APPS = [
+        ["onboarding", "git://github.com/cozy/cozy-onboarding-v3.git#latest"],
+        "settings",
+        "drive",
+        "photos",
+        "collect",
+        "store"
+    ]
 
     def __init__(self):
         super().__init__()
@@ -120,7 +126,13 @@ class PKI(ACME):
 
         for app in PKI.DEFAULT_APPS:
             Logger.info("Install app %s on %s", app, fqdn)
-            Cmd.exec("cozy-stack", "apps", "install", app, "--domain", fqdn)
+            cmd = ["cozy-stack", "apps", "install"]
+            if isinstance(app, str):
+                cmd += [app]
+            else:
+                cmd += app
+            cmd += ["--domain", fqdn]
+            Cmd.exec(*cmd)
 
         registration_url = "https://%s/?registerToken=%s" % (fqdn, token)
 
@@ -184,4 +196,3 @@ class PKI(ACME):
     def renew(self, fqdns):
         for fqdn in fqdns:
             self.__renew(fqdn)
-
