@@ -2,11 +2,11 @@ import io
 import json
 import os
 import os.path
-import re
-import shutil
 import tarfile
 
 import couchdb
+import re
+import shutil
 import yaml
 
 from .logger import Logger
@@ -15,16 +15,26 @@ from .utils import list_safe_get
 
 class Backup:
     def __init__(self):
-        config = os.environ.get('COZY_CONFIG', '/etc/cozy/cozy.yml')
-        with open(config, 'r') as file:
+        config = os.environ.get("COZY_CONFIG", "/etc/cozy/cozy.yml")
+        with open(config, "r") as file:
             config = yaml.load(file)
-        self.__url = config['couchdb']['url']
-        self.__storage_dir = config['fs']['url'].replace("file://", "")
+        self.__url = config["couchdb"]["url"]
+        self.__storage_dir = config["fs"]["url"].replace("file://", "")
         self.__server = couchdb.Server(self.__url)
 
+    def __instance_prefix(self, fqdn):
+        _, instance = self.__get_global_instance(fqdn)
+
+        prefix = instance.get("prefix")
+        if prefix:
+            return prefix
+
+        # Old layout compatibility
+        return fqdn.replace(".", "-")
+
     def __related_dbs(self, fqdn):
-        fqdn = fqdn.replace(".", "-")
-        regex = re.compile("^%s(/.*)$" % re.escape(fqdn))
+        prefix = self.__instance_prefix(fqdn)
+        regex = re.compile("^%s(/.*)$" % re.escape(prefix))
         for db in self.__server:
             if regex.match(db):
                 yield self.__server[db]
@@ -164,7 +174,9 @@ class Backup:
                 self.__delete_global_instance(fqdn)
                 self.__restore_db("global", "instances", content)
             else:
-                self.__restore_db(fqdn, db, content)
+                db = re.sub("\.json$", "", db)
+                prefix = self.__instance_prefix(fqdn)
+                self.__restore_db(prefix, db, content)
 
     def __extract_storage_members(self, tar):
         yield from self.__extract_members(tar, "storage/")
