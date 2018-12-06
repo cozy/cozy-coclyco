@@ -1,8 +1,10 @@
+import os
 import subprocess
 import threading
+from getpass import getpass
 
-from .utils import filter_sensible_field
 from .logger import Logger
+from .utils import filter_sensible_field
 
 
 class StreamAndString:
@@ -77,3 +79,23 @@ class Cmd:
     def ssh(host, *cmd):
         cmd = ["ssh", "-o", "ControlMaster=no", host] + list(cmd)
         return Cmd.exec(*cmd)
+
+    @staticmethod
+    def load_passphrase():
+        if os.environ.get("COZY_ADMIN_PASSWORD") is not None:
+            return
+
+        file = "/etc/cozy/.cozy-admin-passphrase"
+        if os.path.exists("/etc/cozy/.cozy-admin-passphrase"):
+            with open(file, "r") as f:
+                passphrase = f.read()
+        else:
+            passphrase = getpass("Enter Cozy admin passphrase: ")
+
+        os.environ["COZY_ADMIN_PASSWORD"] = passphrase
+
+    @staticmethod
+    def stack(*cmd):
+        cmd = ["cozy-stack"] + list(cmd)
+        Cmd.load_passphrase()
+        return Cmd.exec(*cmd, )

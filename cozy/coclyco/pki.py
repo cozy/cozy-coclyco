@@ -1,6 +1,7 @@
 import os
 import re
 from datetime import datetime, timedelta
+
 from pkg_resources import resource_stream
 
 from .acme import ACME
@@ -84,7 +85,7 @@ class PKI(ACME):
 
     def __installed_apps(self, slug, domain):
         fqdn = self.__fqdn(slug, domain)
-        o, *_ = Cmd.exec("cozy-stack", "apps", "ls", "--domain", fqdn)
+        o, *_ = Cmd.stack("apps", "ls", "--domain", fqdn)
         for line in o.splitlines():
             yield line.split(" ", 1)[0]
 
@@ -116,8 +117,7 @@ class PKI(ACME):
         email = args.email
         Logger.info("Create instance %s with email %s", fqdn, email)
 
-        o, *_ = Cmd.exec("cozy-stack", "instances", "add", fqdn, "--email",
-                         email)
+        o, *_ = Cmd.stack("instances", "add", fqdn, "--email", email)
         for line in o.splitlines():
             match = re.search("^Registration token: \"(.*)\"$", line)
             if match:
@@ -126,13 +126,13 @@ class PKI(ACME):
 
         for app in PKI.DEFAULT_APPS:
             Logger.info("Install app %s on %s", app, fqdn)
-            cmd = ["cozy-stack", "apps", "install"]
+            cmd = ["apps", "install"]
             if isinstance(app, str):
                 cmd += [app]
             else:
                 cmd += app
             cmd += ["--domain", fqdn]
-            Cmd.exec(*cmd)
+            Cmd.stack(*cmd)
 
         registration_url = "https://%s/?registerToken=%s" % (fqdn, token)
 
