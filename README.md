@@ -15,10 +15,11 @@ By default,
 
  * `<fqdn>`
  * `onboarding.<fqdn>`
+ * `home.<fqdn>`
+ * `store.<fqdn>`
  * `settings.<fqdn>`
  * `drive.<fqdn>`
  * `photos.<fqdn>`
- * `collect.<fqdn>`
 
 are added to the certificate.
 
