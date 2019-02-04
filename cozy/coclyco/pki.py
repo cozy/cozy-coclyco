@@ -12,7 +12,6 @@ from .utils import list_safe_get
 
 class PKI(ACME):
     DEFAULT_APPS = [
-        ["onboarding", "git://github.com/cozy/cozy-onboarding-v3.git#latest"],
         "settings",
         "home",
         "drive",
