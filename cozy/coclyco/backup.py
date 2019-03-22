@@ -13,14 +13,36 @@ from .logger import Logger
 from .utils import list_safe_get
 
 
+def merge(source, destination):
+    for key, value in source.items():
+        if isinstance(value, dict):
+            node = destination.setdefault(key, {})
+            merge(value, node)
+        else:
+            destination[key] = value
+    return destination
+
+
 class Backup:
     def __init__(self):
-        config = os.environ.get("COZY_CONFIG", "/etc/cozy/cozy.yml")
-        with open(config, "r") as file:
-            config = yaml.load(file)
+        config = self.__config()
         self.__url = config["couchdb"]["url"]
         self.__storage_dir = config["fs"]["url"].replace("file://", "")
         self.__server = couchdb.Server(self.__url)
+
+    def __config(self):
+        config = {}
+        path = os.environ.get("COZY_CONFIG", "/etc/cozy/cozy.yml")
+        local = path + ".local"
+        if os.path.isfile(local):
+            with open(local, "r") as file:
+                tmp = yaml.load(file)
+            config = merge(tmp, config)
+        if os.path.isfile(path):
+            with open(path, "r") as file:
+                tmp = yaml.load(file)
+            config = merge(tmp, config)
+        return config
 
     def __instance_prefix(self, fqdn):
         _, instance = self.__get_global_instance(fqdn)
