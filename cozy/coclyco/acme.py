@@ -1,11 +1,11 @@
 import os
-from time import sleep
+import sys
 
 import OpenSSL
 import acme.challenges
 import acme.client
-import josepy
 import acme.messages
+import josepy as jose
 import requests
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import ec
@@ -21,16 +21,16 @@ class ACME:
     ACME_STAGING = os.getenv("ACME_STAGING", None)
     if ACME_STAGING:
         Logger.warning("Using Let's Encrypt staging endpoint")
-        ACME_DEFAULT_ENDPOINT = "https://acme-staging.api.letsencrypt.org/directory"
+        ACME_DEFAULT_ENDPOINT = "https://acme-staging-v02.api.letsencrypt.org/directory"
     else:
-        ACME_DEFAULT_ENDPOINT = "https://acme-v01.api.letsencrypt.org/directory"
+        ACME_DEFAULT_ENDPOINT = "https://acme-v02.api.letsencrypt.org/directory"
     ACME_ENDPOINT = os.getenv("ACME_ENDPOINT", ACME_DEFAULT_ENDPOINT)
     ACME_DIRECTORY = os.getenv("ACME_DIRECTORY", "/etc/ssl/private")
+    USER_AGENT = "Cozy Coclyco"
     DEFAULT_BACKEND = default_backend()
 
     def __init__(self):
         self.__acme = self.__get_client()
-
         challenges = self._file("acme-challenge")
         if not os.path.isdir(challenges):
             os.mkdir(challenges)
@@ -43,7 +43,16 @@ class ACME:
             OpenSSL.crypto.FILETYPE_PEM, pem)
         return key
 
-    def _generate_ecdsa_key(self, curve="secp256r1", format="openssl"):
+    def _generate_rsa_key(self, size=4096, exponent=65537, format="openssl"):
+        Logger.debug("Generate a RSA private key, size=%d, exponent=%d",
+                     size, exponent)
+        key = ACME.DEFAULT_BACKEND.generate_rsa_private_key(
+            key_size=size, public_exponent=exponent)
+        if format == "openssl":
+            key = self.__openssl_to_crypto(key)
+        return key
+
+    def _generate_key(self, curve="secp256r1", format="openssl"):
         Logger.debug("Generate an ECDSA private key, curve=%s", curve)
         curve_name = curve.lower()
         curve = ec._CURVE_TYPES.get(curve_name)
@@ -52,15 +61,6 @@ class ACME:
 
         key = ACME.DEFAULT_BACKEND.generate_elliptic_curve_private_key(
             curve=curve())
-        if format == "openssl":
-            key = self.__openssl_to_crypto(key)
-        return key
-
-    def _generate_rsa_key(self, size=4096, exponent=65537, format="openssl"):
-        Logger.debug("Generate a RSA private key, size=%d, exponent=%d", size,
-                     exponent)
-        key = ACME.DEFAULT_BACKEND.generate_rsa_private_key(key_size=size,
-                                                            public_exponent=exponent)
         if format == "openssl":
             key = self.__openssl_to_crypto(key)
         return key
@@ -86,11 +86,6 @@ class ACME:
             key = OpenSSL.crypto.load_privatekey(
                 type=OpenSSL.crypto.FILETYPE_PEM, buffer=pem, passphrase=None)
         return key
-
-    def _generate_key(self, type="ecc", size="secp256r1", format="openssl"):
-        if type == "rsa":
-            return self.__generate_rsa_key(size, format=format)
-        return self.__generate_ecdsa_key(size, format=format)
 
     def _save_csr(self, csr, file):
         pem = OpenSSL.crypto.dump_certificate_request(
@@ -121,9 +116,36 @@ class ACME:
         return os.path.join(ACME.ACME_DIRECTORY, *path)
 
     def __create_client(self, key):
-        key = josepy.JWKRSA(key=key)
-        client = acme.client.Client(ACME.ACME_ENDPOINT, key)
+        key = jose.JWKRSA(key=key)
+        net = acme.client.ClientNetwork(key, user_agent=ACME.USER_AGENT)
+        directory = acme.messages.Directory.from_json(
+            net.get(ACME.ACME_ENDPOINT).json())
+        client = acme.client.ClientV2(directory, net=net)
         return client
+
+    def __register(self, client):
+        tos = client.directory.meta.terms_of_service
+        tos = input(
+            "Are you agree with Let's Encrypt terms of service available at {}? [y/N] ".format(
+                tos)).lower()
+        if tos != 'y':
+            Logger.error("Terms of service not accepted, aborting...")
+            sys.exit(-1)
+        email = input("Email address for Let's Encrypt account registration: ")
+        account = acme.messages.NewRegistration.from_data(
+            email=email, terms_of_service_agreed=True)
+        Logger.info("Register account to Let's Encrypt")
+        client.new_account(account)
+
+    def __load_registration(self, client):
+        net = client.net
+        key = net.key
+        reg = acme.messages.NewRegistration(
+            key=key.public_key(), only_return_existing=True)
+        directory = client.directory
+        response = client._post(directory['newAccount'], reg)
+        regr = client._regr_from_response(response)
+        net.account = regr
 
     def __get_client(self):
         if ACME.ACME_STAGING:
@@ -135,74 +157,14 @@ class ACME:
             Logger.info("Create new account key %s", account_key)
             key = self._generate_rsa_key(format="acme")
             self._save_key(key, account_key)
-
             client = self.__create_client(key)
-            reg = client.register()
-            Logger.info("Accept TOS: %s", reg.terms_of_service)
-            client.agree_to_tos(reg)
+            self.__register(client)
         else:
             key = self._read_key(account_key, format="acme")
             client = self.__create_client(key)
+            self.__load_registration(client)
+
         return client
-
-    def __get_challenge(self, challenges, type=acme.challenges.HTTP01):
-        challenges = challenges.body.challenges
-        for body in challenges:
-            challenge = body.chall
-            if isinstance(challenge, type):
-                return body, challenge
-        raise Exception("Challenge %s not found" % type)
-
-    def _pool_challenge(self, challenges, type=acme.challenges.HTTP01):
-        for i in range(10):
-            challenges, authzr_response = self.__acme.poll(challenges)
-            body, challenge = self.__get_challenge(challenges, type=type)
-            status = body.status
-
-            Logger.debug("Challenge status: %s", status.name)
-            if status == acme.messages.STATUS_INVALID:
-                Logger.exception("Invalid challenge")
-            elif status == acme.messages.STATUS_REVOKED:
-                Logger.exception("Challenge revoked")
-            elif status == acme.messages.STATUS_VALID:
-                i = -1
-                break
-
-            sleep(1)
-        if i > 0:
-            Logger.exception("Challenge timeout")
-
-        return challenges
-
-    def __authorize_domain(self, domain):
-        Logger.info("Validate %s", domain)
-        challenges = self.__acme.request_domain_challenges(domain)
-        body, challenge = self.__get_challenge(challenges)
-
-        token = challenge.key_authorization(self.__acme.key)
-        path = challenge.path
-        url = challenge.uri(domain)
-
-        path = self._file("acme-challenge", os.path.basename(path))
-        with open(path, "w") as file:
-            file.write(token)
-
-        response = requests.get(url, verify=False)
-        response.raise_for_status()
-        retrieved = response.text
-
-        if token != retrieved:
-            Logger.exception(
-                "Invalid token retrieved at %s: expected %s, got %s",
-                url, token, retrieved)
-
-        Logger.debug("Start validation")
-        self.__acme.answer_challenge(body, body.response(self.__acme.key))
-        challenges = self._pool_challenge(challenges)
-
-        os.unlink(path)
-
-        return challenges
 
     def __extract_san(self, x509):
         domain = set()
@@ -258,31 +220,64 @@ class ACME:
         domains = self.__extract_san(x509)
         return cn, domains
 
+    def __prepare_http01_challenge(self, domain, challenge):
+        Logger.info("Request ACME validation for %s", domain)
+        response, validation = challenge.response_and_validation(
+            self.__acme.net.key)
+
+        path = self._file("acme-challenge", os.path.basename(challenge.path))
+        Logger.info("Write challenge %s on %s", validation, path)
+        with open(path, "w") as file:
+            file.write(validation)
+
+        url = challenge.chall.uri(domain)
+        Logger.info("Verify challenge on %s", url)
+        r = requests.get(url, verify=False)
+        r.raise_for_status()
+        retrieved = r.text
+
+        if validation != retrieved:
+            Logger.exception(
+                "Invalid token retrieved at %s: expected %s, got %s",
+                url, validation, retrieved)
+
+        Logger.info("Notify ACME the challenge is ready on %s", url)
+        self.__acme.answer_challenge(challenge, response)
+
+    def __prepare_http01_authorization(self, authorization):
+        body = authorization.body
+        domain = body.identifier.value
+
+        if body.status == acme.messages.STATUS_VALID:
+            Logger.info("Challenge for %s already valid", domain)
+            return
+
+        for challenge in body.challenges:
+            if isinstance(challenge.chall, acme.challenges.HTTP01):
+                self.__prepare_http01_challenge(domain, challenge)
+                return
+
+    def __prepare_http01(self, order):
+        for authorization in order.authorizations:
+            self.__prepare_http01_authorization(authorization)
+
+    def __perform_http01(self, order):
+        self.__prepare_http01(order)
+        Logger.info("Request certificate to ACME")
+        return self.__acme.poll_and_finalize(order)
+
     def _issue_certificate(self, csr):
         cn, domains = self._extract_x509_domains(csr)
         Logger.info("Issue certificate for %s", domains)
-        auth = [self.__authorize_domain(domain) for domain in domains]
 
+        pem = OpenSSL.crypto.dump_certificate_request(
+            OpenSSL.crypto.FILETYPE_PEM, csr)
         Logger.info("Request issuance for %s", domains)
-        chain = self.__acme.request_issuance(
-            josepy.util.ComparableX509(csr), auth)
+        order = self.__acme.new_order(pem)
+        order = self.__perform_http01(order)
+        pem = order.fullchain_pem
+        crt = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, pem)
 
-        Logger.info("Fetch certificate for %s", domains)
-        crt = requests.get(chain.uri)
-        crt.raise_for_status()
-        crt = crt.content
-        crt = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_ASN1, crt)
         file = self._file("%s.crt" % cn)
+        Logger.info("Save certificate for %s in %s", domains, file)
         self._save_crt(crt, file)
-
-        issuer = requests.get(chain.cert_chain_uri)
-        issuer.raise_for_status()
-        issuer = issuer.content
-        issuer = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_ASN1,
-                                                 issuer)
-        issuer = OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_PEM,
-                                                 issuer)
-        with open(file, "ab") as f:
-            f.write(issuer)
-
-        return crt

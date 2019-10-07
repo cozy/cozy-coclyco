@@ -27,7 +27,7 @@ class PKI(ACME):
         file = self._file("cozy.pem")
         if not os.path.isfile(file):
             Logger.info("Creating new master key %s", file)
-            key = self._generate_ecdsa_key(format="openssl")
+            key = self._generate_key(format="openssl")
             self._save_key(key, file)
             return key
         else:
