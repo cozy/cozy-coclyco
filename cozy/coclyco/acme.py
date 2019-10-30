@@ -101,9 +101,8 @@ class ACME:
         return csr
 
     def _save_crt(self, crt, file):
-        pem = OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_PEM, crt)
-        with open(file, "wb") as file:
-            file.write(pem)
+        with open(file, "w") as file:
+            file.write(crt)
 
     def _read_crt(self, file):
         with open(file, "rb") as file:
@@ -275,8 +274,7 @@ class ACME:
         Logger.info("Request issuance for %s", domains)
         order = self.__acme.new_order(pem)
         order = self.__perform_http01(order)
-        pem = order.fullchain_pem
-        crt = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, pem)
+        crt = order.fullchain_pem
 
         file = self._file("%s.crt" % cn)
         Logger.info("Save certificate for %s in %s", domains, file)
